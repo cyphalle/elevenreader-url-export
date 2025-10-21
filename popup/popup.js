@@ -2,24 +2,28 @@
 
 const urlList = document.getElementById('urlList');
 const statusDiv = document.getElementById('status');
+const API_ENDPOINT = 'https://api.elevenlabs.io/v1/reader/reads/add/v2';
 
-// Load and display saved URLs
-function loadUrls() {
-  browser.storage.local.get('savedUrls').then((result) => {
-    const urls = result.savedUrls || [];
-    displayUrls(urls);
+// Load and display history
+function loadHistory() {
+  browser.storage.local.get('sentUrls').then((result) => {
+    const urls = result.sentUrls || [];
+    displayHistory(urls);
   });
 }
 
-// Display URLs in the list
-function displayUrls(urls) {
+// Display URLs in the history list
+function displayHistory(urls) {
   if (urls.length === 0) {
-    urlList.innerHTML = '<div class="empty-message">No URLs saved yet</div>';
+    urlList.innerHTML = '<div class="empty-message">No URLs sent yet</div>';
     return;
   }
 
-  urlList.innerHTML = urls.map((url, index) =>
-    `<div class="url-item">${index + 1}. ${url}</div>`
+  urlList.innerHTML = urls.slice(-10).reverse().map((item, index) =>
+    `<div class="url-item">
+      <div class="url-text">${item.url}</div>
+      <div class="url-status ${item.success ? 'success' : 'error'}">${item.success ? '✓ Sent' : '✗ Failed'}</div>
+    </div>`
   ).join('');
 }
 
@@ -32,99 +36,95 @@ function showStatus(message, type = 'success') {
   }, 3000);
 }
 
-// Save URL to storage
-function saveUrl(url) {
-  browser.storage.local.get('savedUrls').then((result) => {
-    const urls = result.savedUrls || [];
+// Add URL to history
+function addToHistory(url, success) {
+  browser.storage.local.get('sentUrls').then((result) => {
+    const urls = result.sentUrls || [];
+    urls.push({ url, success, timestamp: new Date().toISOString() });
+    browser.storage.local.set({ sentUrls: urls }).then(() => {
+      loadHistory();
+    });
+  });
+}
 
-    // Avoid duplicates
-    if (!urls.includes(url)) {
-      urls.push(url);
-      browser.storage.local.set({ savedUrls: urls }).then(() => {
-        loadUrls();
-        showStatus('URL saved successfully!');
-      });
+// Send URL to ElevenReader API
+async function sendToElevenReader(url) {
+  try {
+    // Create FormData
+    const formData = new FormData();
+    formData.append('from_url', url);
+
+    // Make the API request
+    const response = await fetch(API_ENDPOINT, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include'
+    });
+
+    if (response.ok) {
+      addToHistory(url, true);
+      return { success: true };
     } else {
-      showStatus('URL already saved', 'error');
+      const errorText = await response.text();
+      console.error('API Error:', response.status, errorText);
+      addToHistory(url, false);
+      return { success: false, error: `API returned ${response.status}` };
     }
-  });
+  } catch (error) {
+    console.error('Request failed:', error);
+    addToHistory(url, false);
+    return { success: false, error: error.message };
+  }
 }
 
-// Save multiple URLs
-function saveUrls(newUrls) {
-  browser.storage.local.get('savedUrls').then((result) => {
-    const urls = result.savedUrls || [];
-    let addedCount = 0;
+// Send current tab
+document.getElementById('sendCurrentTab').addEventListener('click', async () => {
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
-    newUrls.forEach(url => {
-      if (!urls.includes(url)) {
-        urls.push(url);
-        addedCount++;
-      }
-    });
+  if (tabs[0]) {
+    showStatus('Sending to ElevenReader...', 'info');
+    const result = await sendToElevenReader(tabs[0].url);
 
-    browser.storage.local.set({ savedUrls: urls }).then(() => {
-      loadUrls();
-      showStatus(`${addedCount} URL(s) saved!`);
-    });
-  });
-}
-
-// Export current tab
-document.getElementById('exportCurrentTab').addEventListener('click', () => {
-  browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-    if (tabs[0]) {
-      saveUrl(tabs[0].url);
+    if (result.success) {
+      showStatus('✓ Sent to ElevenReader!', 'success');
+    } else {
+      showStatus(`✗ Failed: ${result.error}`, 'error');
     }
-  });
+  }
 });
 
-// Export all tabs
-document.getElementById('exportAllTabs').addEventListener('click', () => {
-  browser.tabs.query({ currentWindow: true }).then((tabs) => {
-    const urls = tabs.map(tab => tab.url);
-    saveUrls(urls);
-  });
+// Send all tabs
+document.getElementById('sendAllTabs').addEventListener('click', async () => {
+  const tabs = await browser.tabs.query({ currentWindow: true });
+
+  showStatus(`Sending ${tabs.length} URLs...`, 'info');
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const tab of tabs) {
+    const result = await sendToElevenReader(tab.url);
+    if (result.success) {
+      successCount++;
+    } else {
+      failCount++;
+    }
+    // Small delay to avoid overwhelming the API
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  showStatus(`✓ ${successCount} sent, ${failCount} failed`, successCount > 0 ? 'success' : 'error');
 });
 
-// Clear all URLs
-document.getElementById('clearUrls').addEventListener('click', () => {
-  if (confirm('Are you sure you want to clear all saved URLs?')) {
-    browser.storage.local.set({ savedUrls: [] }).then(() => {
-      loadUrls();
-      showStatus('All URLs cleared');
+// Clear history
+document.getElementById('clearHistory').addEventListener('click', () => {
+  if (confirm('Clear all history?')) {
+    browser.storage.local.set({ sentUrls: [] }).then(() => {
+      loadHistory();
+      showStatus('History cleared');
     });
   }
 });
 
-// Download URLs as file
-document.getElementById('downloadUrls').addEventListener('click', () => {
-  browser.storage.local.get('savedUrls').then((result) => {
-    const urls = result.savedUrls || [];
-
-    if (urls.length === 0) {
-      showStatus('No URLs to download', 'error');
-      return;
-    }
-
-    const content = urls.join('\n');
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-
-    browser.downloads.download({
-      url: url,
-      filename: `elevenreader-urls-${timestamp}.txt`,
-      saveAs: true
-    }).then(() => {
-      showStatus('URLs downloaded successfully!');
-      URL.revokeObjectURL(url);
-    }).catch((error) => {
-      showStatus('Download failed', 'error');
-      console.error('Download error:', error);
-    });
-  });
-});
-
-// Load URLs on popup open
-loadUrls();
+// Load history on popup open
+loadHistory();

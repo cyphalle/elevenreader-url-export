@@ -10,7 +10,10 @@
   "permissions": [
     "tabs",
     "activeTab",
-    "storage"
+    "storage",
+    "cookies",
+    "https://api.elevenlabs.io/*",
+    "https://elevenreader.io/*"
   ],
   "browser_action": {
     "default_icon": "icons/icon-48.png",

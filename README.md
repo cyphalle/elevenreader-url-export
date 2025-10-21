@@ -1,15 +1,15 @@
 # ElevenReader URL Export
 
-A Firefox extension to collect and export URLs for use with ElevenReader.
+A Firefox extension to send article URLs directly to your ElevenReader library.
 
 ## Features
 
-- Export current tab URL
-- Export all open tabs at once
-- Store URLs locally in the browser
-- Download URLs as a text file
-- Avoid duplicate URLs
+- Send current tab URL to ElevenReader with one click
+- Send all open tabs at once
+- Direct API integration - no copy/paste needed
+- View history of sent URLs with success/failure status
 - Clean, simple interface
+- Works seamlessly when logged into ElevenReader
 
 ## Installation
 
@@ -27,12 +27,16 @@ A Firefox extension to collect and export URLs for use with ElevenReader.
 
 ## Usage
 
-1. Click the extension icon in your Firefox toolbar
-2. Choose an action:
-   - **Export Current URL**: Save the currently active tab's URL
-   - **Export All URLs**: Save all open tabs in the current window
-   - **Clear All**: Remove all saved URLs
-   - **Download as File**: Export all saved URLs to a text file
+**Important**: You must be logged into [elevenreader.io](https://elevenreader.io) for the extension to work.
+
+1. Make sure you're logged into your ElevenReader account
+2. Click the extension icon in your Firefox toolbar
+3. Choose an action:
+   - **Send Current Tab**: Send the active tab's URL to ElevenReader
+   - **Send All Tabs**: Send all open tabs to ElevenReader
+   - **Clear History**: Clear the history of sent URLs
+
+The extension will show you whether each URL was successfully sent or if there was an error.
 
 ## File Structure
 
@@ -63,15 +67,27 @@ You can create simple icons or use any image editing tool.
 This extension requires the following permissions:
 - `tabs`: To access tab information and URLs
 - `activeTab`: To get the current active tab
-- `storage`: To save URLs locally
-- `downloads`: To export URLs as a file (added automatically when using download API)
+- `storage`: To save history locally
+- `cookies`: To authenticate with ElevenReader
+- `https://api.elevenlabs.io/*`: To send URLs to ElevenReader API
+- `https://elevenreader.io/*`: To access ElevenReader authentication
 
 ## Technical Details
 
-- Manifest Version: 2
-- Storage: Uses `browser.storage.local` API
-- Download: Uses Firefox Downloads API
-- No external dependencies
+- **Manifest Version**: 2
+- **API Endpoint**: `https://api.elevenlabs.io/v1/reader/reads/add/v2`
+- **Authentication**: Uses your existing ElevenReader session cookies
+- **Storage**: Uses `browser.storage.local` API to keep history
+- **Rate Limiting**: 500ms delay between batch requests to avoid overwhelming the API
+- **No external dependencies**
+
+## How It Works
+
+1. The extension uses Firefox's `fetch` API with `credentials: 'include'` to send authenticated requests
+2. It creates a `multipart/form-data` request with the URL in the `from_url` field
+3. The browser automatically includes your ElevenReader authentication cookies
+4. The API processes the URL and adds it to your library
+5. The extension displays success/failure status and keeps a local history
 
 ## Development
 
