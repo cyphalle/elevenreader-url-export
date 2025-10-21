@@ -1,0 +1,16 @@
+# Firefox extension artifacts
+web-ext-artifacts/
+*.xpi
+*.zip
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
