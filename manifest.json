@@ -22,5 +22,12 @@
   },
   "background": {
     "scripts": ["background.js"]
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://elevenreader.io/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }

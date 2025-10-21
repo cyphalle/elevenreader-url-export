@@ -47,16 +47,56 @@ function addToHistory(url, success) {
   });
 }
 
+// Get authentication token from elevenreader.io localStorage
+async function getAuthToken() {
+  try {
+    // Find a tab with elevenreader.io
+    const tabs = await browser.tabs.query({ url: "https://elevenreader.io/*" });
+
+    if (tabs.length === 0) {
+      console.error('No elevenreader.io tab found. Please open elevenreader.io and log in.');
+      return null;
+    }
+
+    // Send message to content script running on elevenreader.io
+    const response = await browser.tabs.sendMessage(tabs[0].id, { action: 'getAuthToken' });
+
+    if (response && response.token) {
+      return response.token;
+    } else {
+      console.error('Failed to get token:', response?.error);
+      return null;
+    }
+  } catch (error) {
+    console.error('Failed to get auth token:', error);
+    return null;
+  }
+}
+
 // Send URL to ElevenReader API
 async function sendToElevenReader(url) {
   try {
+    // Get auth token
+    const authToken = await getAuthToken();
+
+    if (!authToken) {
+      addToHistory(url, false);
+      return { success: false, error: 'Please open elevenreader.io in a tab and log in first.' };
+    }
+
     // Create FormData
     const formData = new FormData();
     formData.append('from_url', url);
 
+    // Prepare headers
+    const headers = {
+      'Authorization': `Bearer ${authToken}`
+    };
+
     // Make the API request
     const response = await fetch(API_ENDPOINT, {
       method: 'POST',
+      headers: headers,
       body: formData,
       credentials: 'include'
     });
