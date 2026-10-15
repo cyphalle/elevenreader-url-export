@@ -38,7 +38,7 @@ A Firefox extension to send article URLs directly to your ElevenReader library.
 4. Click the extension icon in your Firefox toolbar
 5. Choose an action:
    - **Send Current Tab**: Send the active tab's URL to ElevenReader
-   - **Send All Tabs**: Send all open tabs to ElevenReader
+   - **Send All Tabs**: Lists the open http(s) tabs and sends them after you confirm
    - **Clear History**: Clear the history of sent URLs
 
 The extension will show you whether each URL was successfully sent or if there was an error.
@@ -74,15 +74,21 @@ This extension requires the following permissions:
 - `tabs`: To access tab information and URLs
 - `activeTab`: To get the current active tab
 - `storage`: To save history locally
-- `cookies`: To authenticate with ElevenReader
 - `https://api.elevenlabs.io/*`: To send URLs to ElevenReader API
 - `https://elevenreader.io/*`: To access ElevenReader authentication
+
+## Privacy
+
+- Only `http://` and `https://` URLs are sent. Browser-internal pages (`about:`, `moz-extension:`, `file:`) are skipped.
+- Query parameters that commonly carry credentials (`code`, `token`, `access_token`, `id_token`, `refresh_token`, `sig`, `signature`, `key`, `api_key`, `apikey`, `auth`, `password`, `session`, `X-Amz-*`) are removed before sending, as is a URL fragment holding such a parameter.
+- "Send All Tabs" shows the exact list of URLs and sends nothing until you confirm.
+- The local history keeps the last 100 URLs.
 
 ## Technical Details
 
 - **Manifest Version**: 2
 - **API Endpoint**: `https://api.elevenlabs.io/v1/reader/reads/add/v2`
-- **Authentication**: Uses your existing ElevenReader session cookies
+- **Authentication**: Uses the Firebase token of your logged-in elevenreader.io tab
 - **Storage**: Uses `browser.storage.local` API to keep history
 - **Rate Limiting**: 500ms delay between batch requests to avoid overwhelming the API
 - **No external dependencies**
