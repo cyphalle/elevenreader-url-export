@@ -164,3 +164,21 @@ h2 {
   padding: 20px;
   font-size: 13px;
 }
+
+.confirm {
+  margin-top: 8px;
+}
+
+.confirm[hidden] {
+  display: none;
+}
+
+.confirm-title {
+  font-size: 13px;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.confirm .url-text {
+  margin-bottom: 4px;
+}

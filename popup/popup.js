@@ -3,6 +3,45 @@
 const urlList = document.getElementById('urlList');
 const statusDiv = document.getElementById('status');
 const API_ENDPOINT = 'https://api.elevenlabs.io/v1/reader/reads/add/v2';
+const HISTORY_LIMIT = 100;
+
+// Query parameters that commonly carry credentials. They are removed before a
+// URL leaves the browser.
+const SENSITIVE_PARAMS = new Set([
+  'code', 'token', 'access_token', 'id_token', 'refresh_token', 'sig',
+  'signature', 'key', 'api_key', 'apikey', 'auth', 'password', 'session'
+]);
+
+function isSensitiveParam(name) {
+  const lower = name.toLowerCase();
+  return SENSITIVE_PARAMS.has(lower) || lower.startsWith('x-amz-');
+}
+
+// Returns a sanitized http(s) URL, or null when the URL must not be sent.
+function sanitizeUrl(rawUrl) {
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch (e) {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return null;
+  }
+  for (const name of [...url.searchParams.keys()]) {
+    if (isSensitiveParam(name)) {
+      url.searchParams.delete(name);
+    }
+  }
+  // OAuth implicit flows put tokens in the fragment.
+  if (url.hash.includes('=')) {
+    const fragment = new URLSearchParams(url.hash.slice(1));
+    if ([...fragment.keys()].some(isSensitiveParam)) {
+      url.hash = '';
+    }
+  }
+  return url.toString();
+}
 
 // Load and display history
 function loadHistory() {
@@ -15,16 +54,25 @@ function loadHistory() {
 // Display URLs in the history list
 function displayHistory(urls) {
   if (urls.length === 0) {
-    urlList.innerHTML = '<div class="empty-message">No URLs sent yet</div>';
+    const empty = document.createElement('div');
+    empty.className = 'empty-message';
+    empty.textContent = 'No URLs sent yet';
+    urlList.replaceChildren(empty);
     return;
   }
 
-  urlList.innerHTML = urls.slice(-10).reverse().map((item, index) =>
-    `<div class="url-item">
-      <div class="url-text">${item.url}</div>
-      <div class="url-status ${item.success ? 'success' : 'error'}">${item.success ? '✓ Sent' : '✗ Failed'}</div>
-    </div>`
-  ).join('');
+  urlList.replaceChildren(...urls.slice(-10).reverse().map((item) => {
+    const row = document.createElement('div');
+    row.className = 'url-item';
+    const text = document.createElement('div');
+    text.className = 'url-text';
+    text.textContent = item.url;
+    const status = document.createElement('div');
+    status.className = `url-status ${item.success ? 'success' : 'error'}`;
+    status.textContent = item.success ? '✓ Sent' : '✗ Failed';
+    row.append(text, status);
+    return row;
+  }));
 }
 
 // Show status message
@@ -41,7 +89,7 @@ function addToHistory(url, success) {
   browser.storage.local.get('sentUrls').then((result) => {
     const urls = result.sentUrls || [];
     urls.push({ url, success, timestamp: new Date().toISOString() });
-    browser.storage.local.set({ sentUrls: urls }).then(() => {
+    browser.storage.local.set({ sentUrls: urls.slice(-HISTORY_LIMIT) }).then(() => {
       loadHistory();
     });
   });
@@ -122,8 +170,13 @@ document.getElementById('sendCurrentTab').addEventListener('click', async () => 
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
   if (tabs[0]) {
+    const url = sanitizeUrl(tabs[0].url);
+    if (!url) {
+      showStatus('✗ Only http(s) pages can be sent', 'error');
+      return;
+    }
     showStatus('Sending to ElevenReader...', 'info');
-    const result = await sendToElevenReader(tabs[0].url);
+    const result = await sendToElevenReader(url);
 
     if (result.success) {
       showStatus('✓ Sent to ElevenReader!', 'success');
@@ -133,17 +186,48 @@ document.getElementById('sendCurrentTab').addEventListener('click', async () => 
   }
 });
 
-// Send all tabs
+// Send all tabs: list the sanitized URLs and wait for an explicit confirmation.
+const confirmPanel = document.getElementById('confirmAllTabs');
+const confirmList = document.getElementById('confirmList');
+const confirmCount = document.getElementById('confirmCount');
+let pendingUrls = [];
+
 document.getElementById('sendAllTabs').addEventListener('click', async () => {
   const tabs = await browser.tabs.query({ currentWindow: true });
+  pendingUrls = [...new Set(tabs.map((tab) => sanitizeUrl(tab.url)).filter(Boolean))];
 
-  showStatus(`Sending ${tabs.length} URLs...`, 'info');
+  if (pendingUrls.length === 0) {
+    showStatus('No http(s) tabs to send', 'error');
+    return;
+  }
+
+  confirmCount.textContent = `Send these ${pendingUrls.length} URLs to ElevenReader?`;
+  confirmList.replaceChildren(...pendingUrls.map((url) => {
+    const row = document.createElement('div');
+    row.className = 'url-text';
+    row.textContent = url;
+    return row;
+  }));
+  confirmPanel.hidden = false;
+});
+
+document.getElementById('cancelAllTabs').addEventListener('click', () => {
+  pendingUrls = [];
+  confirmPanel.hidden = true;
+});
+
+document.getElementById('confirmSendAllTabs').addEventListener('click', async () => {
+  const urls = pendingUrls;
+  pendingUrls = [];
+  confirmPanel.hidden = true;
+
+  showStatus(`Sending ${urls.length} URLs...`, 'info');
 
   let successCount = 0;
   let failCount = 0;
 
-  for (const tab of tabs) {
-    const result = await sendToElevenReader(tab.url);
+  for (const url of urls) {
+    const result = await sendToElevenReader(url);
     if (result.success) {
       successCount++;
     } else {
